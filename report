@@ -1,0 +1,283 @@
+import javax.swing.*;
+import java.awt.*;
+import java.sql.*;
+
+public class OnlineExaminationSystem extends JFrame {
+
+    JTextField username;
+    JPasswordField password;
+    JComboBox<String> role;
+
+    Connection con;
+
+    OnlineExaminationSystem() {
+        setTitle("Online Examination System");
+        setSize(400, 300);
+        setLayout(new GridLayout(5, 2, 10, 10));
+
+        try {
+            con = DriverManager.getConnection(
+                "jdbc:mysql://localhost:3306/online_exam",
+                "root",
+                "your_mysql_password"
+            );
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this,
+                "Database connection failed!");
+        }
+
+        add(new JLabel("ONLINE EXAMINATION SYSTEM"));
+
+        add(new JLabel("Login As:"));
+        role = new JComboBox<>(
+            new String[]{"student", "admin"});
+        add(role);
+
+        add(new JLabel("Username:"));
+        username = new JTextField();
+        add(username);
+
+        add(new JLabel("Password:"));
+        password = new JPasswordField();
+        add(password);
+
+        JButton login = new JButton("Login");
+        add(login);
+
+        login.addActionListener(e -> login());
+
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    void login() {
+        try {
+            String sql = "SELECT * FROM users WHERE username=? AND password=? AND role=?";
+
+            PreparedStatement ps =
+                con.prepareStatement(sql);
+
+            ps.setString(1, username.getText());
+            ps.setString(2,
+                new String(password.getPassword()));
+            ps.setString(3,
+                role.getSelectedItem().toString());
+
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                JOptionPane.showMessageDialog(this,
+                    "Login Successful!");
+
+                if (role.getSelectedItem()
+                    .equals("student")) {
+                    new StudentExam(con,
+                        rs.getInt("user_id"));
+                } else {
+                    new AdminPanel(con);
+                }
+
+                dispose();
+
+            } else {
+                JOptionPane.showMessageDialog(this,
+                    "Invalid Username or Password");
+            }
+
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this,
+                e.getMessage());
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(
+            OnlineExaminationSystem::new);
+    }
+}
+
+class StudentExam extends JFrame {
+
+    Connection con;
+    int studentId;
+    int score = 0;
+    int index = 0;
+
+    ResultSet rs;
+    PreparedStatement ps;
+
+    JLabel questionLabel;
+    JRadioButton[] options = new JRadioButton[4];
+    ButtonGroup group = new ButtonGroup();
+
+    String correctAnswer;
+
+    StudentExam(Connection con, int id) {
+        this.con = con;
+        studentId = id;
+
+        setTitle("Student Examination");
+        setSize(500, 400);
+        setLayout(new FlowLayout());
+
+        questionLabel = new JLabel();
+        add(questionLabel);
+
+        for (int i = 0; i < 4; i++) {
+            options[i] = new JRadioButton();
+            group.add(options[i]);
+            add(options[i]);
+        }
+
+        JButton next = new JButton("Next");
+        add(next);
+
+        next.addActionListener(e -> checkAnswer());
+
+        try {
+            ps = con.prepareStatement(
+                "SELECT * FROM questions");
+            rs = ps.executeQuery();
+            loadQuestion();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    void loadQuestion() {
+        try {
+            if (rs.next()) {
+                index++;
+
+                questionLabel.setText(
+                    index + ". " +
+                    rs.getString("question_text"));
+
+                options[0].setText("A. " +
+                    rs.getString("option_a"));
+                options[1].setText("B. " +
+                    rs.getString("option_b"));
+                options[2].setText("C. " +
+                    rs.getString("option_c"));
+                options[3].setText("D. " +
+                    rs.getString("option_d"));
+
+                correctAnswer =
+                    rs.getString("correct_option");
+
+                group.clearSelection();
+
+            } else {
+                showResult();
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    void checkAnswer() {
+        for (int i = 0; i < 4; i++) {
+            if (options[i].isSelected()) {
+                String answer =
+                    String.valueOf((char)('A' + i));
+
+                if (answer.equals(correctAnswer)) {
+                    score++;
+                }
+            }
+        }
+
+        loadQuestion();
+    }
+
+    void showResult() {
+        try {
+            PreparedStatement save =
+                con.prepareStatement(
+                    "INSERT INTO results(student_id,score,total_questions) VALUES(?,?,?)");
+
+            save.setInt(1, studentId);
+            save.setInt(2, score);
+            save.setInt(3, index);
+            save.executeUpdate();
+
+            JOptionPane.showMessageDialog(this,
+                "Exam Completed!\nYour Score: " +
+                score + "/" + index);
+
+            dispose();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class AdminPanel extends JFrame {
+
+    Connection con;
+
+    AdminPanel(Connection con) {
+        this.con = con;
+
+        setTitle("Admin Dashboard");
+        setSize(400, 250);
+        setLayout(new FlowLayout());
+
+        JButton addQuestion =
+            new JButton("Add Question");
+
+        add(addQuestion);
+
+        addQuestion.addActionListener(
+            e -> addQuestion());
+
+        setLocationRelativeTo(null);
+        setVisible(true);
+    }
+
+    void addQuestion() {
+        try {
+            String q = JOptionPane.showInputDialog(
+                "Enter Question:");
+
+            String a = JOptionPane.showInputDialog(
+                "Option A:");
+            String b = JOptionPane.showInputDialog(
+                "Option B:");
+            String c = JOptionPane.showInputDialog(
+                "Option C:");
+            String d = JOptionPane.showInputDialog(
+                "Option D:");
+
+            String correct = JOptionPane.showInputDialog(
+                "Correct Answer (A/B/C/D):");
+
+            String sql =
+                "INSERT INTO questions(question_text,option_a,option_b,option_c,option_d,correct_option) VALUES(?,?,?,?,?,?)";
+
+            PreparedStatement ps =
+                con.prepareStatement(sql);
+
+            ps.setString(1, q);
+            ps.setString(2, a);
+            ps.setString(3, b);
+            ps.setString(4, c);
+            ps.setString(5, d);
+            ps.setString(6, correct.toUpperCase());
+
+            ps.executeUpdate();
+
+            JOptionPane.showMessageDialog(this,
+                "Question Added Successfully!");
+
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this,
+                e.getMessage());
+        }
+    }
